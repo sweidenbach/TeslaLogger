@@ -141,6 +141,8 @@ namespace TeslaLogger
 
                 GetChargingHistoryV2Service.CheckSchema();
 
+                Komoot.CheckSchema();
+
                 Logfile.Log("DBSchema Update finished.");
 
                 // end of schema update
@@ -280,7 +282,6 @@ namespace TeslaLogger
                     CreateEmptyWeatherIniFile();
                     CheckBackupCrontab();
                 }, CancellationToken.None, TaskCreationOptions.DenyChildAttach, TaskScheduler.Default);
-
             }
             catch (Exception ex)
             {
@@ -729,6 +730,12 @@ PRIMARY KEY(id)
                 Logfile.Log("ALTER TABLE mothership ADD COLUMN httpcode int NULL");
                 AssertAlterDB();
                 DBHelper.ExecuteSQLQuery("ALTER TABLE mothership ADD COLUMN httpcode int NULL", 600);
+            }
+            if (!DBHelper.ColumnExists("mothership", "carid"))
+            {
+                Logfile.Log("ALTER TABLE mothership ADD COLUMN carid INT UNSIGNED NULL DEFAULT NULL");
+                AssertAlterDB();
+                DBHelper.ExecuteSQLQuery("ALTER TABLE mothership ADD COLUMN carid INT UNSIGNED NULL DEFAULT NULL", 6000);
             }
         }
 
@@ -1332,7 +1339,7 @@ PRIMARY KEY(id)
                 {
                     var branch = File.ReadAllText("BRANCH").Trim();
 
-                    if (WebHelper.BranchExists(branch))
+                    if (WebHelper.BranchExists(branch, out HttpStatusCode statusCode))
                     {
                         Logfile.Log($"YOU ARE USING BRANCH: " + branch);
 
@@ -1342,6 +1349,12 @@ PRIMARY KEY(id)
                     else
                     {
                         Logfile.Log($"BRANCH NOT EXIST: " + branch);
+
+                        if (statusCode == HttpStatusCode.NotFound)
+                        {
+                            File.Delete("BRANCH");
+                            Logfile.Log("BRANCH file deleted!");
+                        }
                     }
                 }
 
@@ -2772,12 +2785,13 @@ PRIMARY KEY(id)
 
         public static bool UpdateNeeded(string currentVersion, string online_version, Tools.UpdateType updateType)
         {
-            if (updateType == Tools.UpdateType.none)
+            /*
+            if (updateType == Tools.UpdateType.none) // None isn't supported anymore, because Tesla may force me to do an update
             {
                 return false;
-            }
+            }*/
 
-            if (updateType == Tools.UpdateType.stable || updateType == Tools.UpdateType.all)
+            if (updateType == Tools.UpdateType.stable || updateType == Tools.UpdateType.all || updateType == Tools.UpdateType.none)
             {
                 Version cv = new Version(currentVersion);
                 Version ov = new Version(online_version);

@@ -468,10 +468,11 @@ namespace TeslaLogger
                         vin[7] == '6' || // Triple Motor Models S und Model X 2021 Plaid
                         vin[7] == 'B' || // Dual motor - standard Model 3
                         vin[7] == 'C' || // Dual motor - performance Model 3
-                        vin[7] == 'E' ||  // Dual motor - Model Y
-                        vin[7] == 'F' ||  // Dual motor Performance - Model Y
-                        vin[7] == 'K' ||  // Dual motor Standard "Hairpin Windings"
-                        vin[7] == 'L'   // Dual motor Performance "Hairpin Windings"
+                        vin[7] == 'E' || // Dual motor - Model Y
+                        vin[7] == 'F' || // Dual motor Performance - Model Y
+                        vin[7] == 'K' || // Dual motor Standard "Hairpin Windings"
+                        vin[7] == 'L' || // Dual motor Performance "Hairpin Windings"
+                        vin[7] == 'T'    // Dual motor Performance "Highland"
                     )
                 {
                     AWD = true;
@@ -554,6 +555,9 @@ namespace TeslaLogger
                     case 'J':
                     case 'S':
                         motor = "3/Y single";
+                        break;
+                    case 'T':
+                        motor = "3 dual performance highland";
                         break;
                 }
 
@@ -972,7 +976,7 @@ namespace TeslaLogger
                     }
                     else if (j["update"] == "none")
                     {
-                        return UpdateType.none;
+                        return UpdateType.stable;
                     }
                 }
             }
@@ -1207,6 +1211,55 @@ namespace TeslaLogger
             return false;
         }
 
+        public static bool IsUnitTest()
+        {
+            try
+            {
+                foreach(var ass in AppDomain.CurrentDomain.GetAssemblies())
+                {
+                    if(ass.FullName.StartsWith("NUnit.framework", StringComparison.CurrentCultureIgnoreCase) ||
+                       ass.FullName.StartsWith("Microsoft.VisualStudio.QualityTools.UnitTestFramework", StringComparison.InvariantCultureIgnoreCase) ||
+                       ass.FullName.StartsWith("Microsoft.VisualStudio.TestPlatform.MSTest.TestAdapter", StringComparison.InvariantCultureIgnoreCase)||
+                       ass.FullName.StartsWith("Microsoft.TestPlatform", StringComparison.InvariantCultureIgnoreCase))
+                    {
+                        return true;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                ex.ToExceptionless().FirstCarUserID().Submit();
+                Logfile.ExceptionWriter(ex, "IsUnitTest");
+            }
+            return false;
+        }
+
+        public static bool IsDotnet8()
+        {
+            return Environment.Version?.ToString()?.StartsWith("8.0") == true;
+        }
+
+        public static bool IsDockerNET8()
+        {
+            try
+            {
+                string filename = "/tmp/teslalogger-dockernet8";
+
+                if (File.Exists(filename))
+                {
+                    return true;
+                }
+
+            }
+            catch (Exception ex)
+            {
+                ex.ToExceptionless().FirstCarUserID().Submit();
+                Logfile.ExceptionWriter(ex, "IsDockerNET8");
+            }
+
+            return false;
+        }
+
         public static bool IsShareData()
         {
             try
@@ -1282,6 +1335,33 @@ namespace TeslaLogger
 
             _OSVersion = ret;
             return ret;
+        }
+
+
+        public static double CalculateBearing(double lat1, double lon1, double lat2, double lon2)
+        {
+            double dLon = ToRadians(lon2 - lon1);
+            double lat1Rad = ToRadians(lat1);
+            double lat2Rad = ToRadians(lat2);
+
+            double y = Math.Sin(dLon) * Math.Cos(lat2Rad);
+            double x = Math.Cos(lat1Rad) * Math.Sin(lat2Rad) - Math.Sin(lat1Rad) * Math.Cos(lat2Rad) * Math.Cos(dLon);
+
+            double bearing = Math.Atan2(y, x);
+            bearing = ToDegrees(bearing);
+            bearing = (bearing + 360) % 360; // Normalize to 0-360
+
+            return bearing;
+        }
+
+        private static double ToRadians(double degrees)
+        {
+            return degrees * (Math.PI / 180);
+        }
+
+        private static double ToDegrees(double radians)
+        {
+            return radians * (180 / Math.PI);
         }
 
         // source: https://www.limilabs.com/blog/json-net-formatter
@@ -2050,6 +2130,45 @@ WHERE
             }
 
             return "";
+        }
+
+        public static int CalculateSleepSeconds(int RateLimitPerDay, int UsedCommands, DateTime utcnow)
+        {
+            var remainingCommands = RateLimitPerDay - UsedCommands;
+
+            var min = utcnow.Hour * 60 + utcnow.Minute;
+            var minutesperday = 1440;
+            var remainminutes = minutesperday - min;
+            var remainsecounds = remainminutes * 60;
+
+            var sleepPerCommand = remainsecounds / remainingCommands;
+
+            if (sleepPerCommand < 10)
+                sleepPerCommand = 10;
+
+            return (int)sleepPerCommand;
+        }
+
+        internal static double MphToKmhRounded(double speed_mph)
+        {
+            int speed_floor = (int)(speed_mph * 1.609344);
+            // handle special speed_floor as Math.Round is off by +1
+            if (
+                speed_floor == 30
+                || speed_floor == 33
+                || speed_floor == 83
+                || speed_floor == 123
+                || speed_floor == 133
+                )
+            {
+                return speed_floor;
+            }
+            return Math.Round(speed_mph / 0.62137119223733);
+        }
+
+        internal static double MlToKm(double miles, int decimals = 3)
+        {
+            return Math.Round(miles * 1.609344, decimals);
         }
     }
 

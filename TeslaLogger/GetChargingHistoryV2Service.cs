@@ -158,7 +158,7 @@ INSERT IGNORE INTO teslacharging SET
         {
             Tools.DebugLog($"GetChargingHistoryV2Service.LoadAll(#{car.CarInDB})");
             int resultPage = 1;
-            string result = car.webhelper.GetChargingHistoryV2(resultPage).Result;
+            string result = car.webhelper.GetChargingHistoryV2(car.Vin, resultPage).Result;
             if (result == null || result == "{}" || string.IsNullOrEmpty(result))
             {
                 Tools.DebugLog($"GetChargingHistoryV2Service.LoadAll(#{car.CarInDB}): result == null");
@@ -186,35 +186,36 @@ INSERT IGNORE INTO teslacharging SET
                 resultPage++;
                 Thread.Sleep(2500); // wait a bit
                 Tools.DebugLog($"GetChargingHistoryV2Service.LoadAll(#{car.CarInDB}) resultpage {resultPage}");
-                result = car.webhelper.GetChargingHistoryV2(resultPage).Result;
+                result = car.webhelper.GetChargingHistoryV2(car.Vin, resultPage).Result;
             }
         }
 
-        internal static void LoadLatest(Car car)
+        internal static bool LoadLatest(Car car)
         {
             Tools.DebugLog($"GetChargingHistoryV2Service.LoadLatest(#{car.CarInDB})");
             string result = car.webhelper.GetChargingHistoryV2(1).Result;
             if (result == null || result == "{}" || string.IsNullOrEmpty(result))
             {
                 Tools.DebugLog($"GetChargingHistoryV2Service.LoadLatest(#{car.CarInDB}): result == null");
-                return;
+                return false;
             }
             if (result.Contains("Retry later"))
             {
                 Tools.DebugLog($"GetChargingHistoryV2Service.LoadLatest(#{car.CarInDB}): Retry later");
-                return;
+                return false;
             }
             else if (result.Contains("vehicle unavailable"))
             {
                 Tools.DebugLog($"GetChargingHistoryV2Service.LoadLatest(#{car.CarInDB}): vehicle unavailable");
-                return;
+                return false;
             }
             else if (result.Contains("502 Bad Gateway"))
             {
                 Tools.DebugLog($"GetChargingHistoryV2Service.LoadLatest(#{car.CarInDB}): 502 Bad Gateway");
-                return;
+                return false;
             }
             _ = ParseJSON(result, car);
+            return true;
         }
 
         internal static void CheckSchema()
@@ -417,7 +418,8 @@ LIMIT 1
                                     }
                                 }
                                 if (fee.ContainsKey("pricingType")
-                                    && fee["pricingType"].ToString().Equals("PAYMENT")
+                                    && (fee["pricingType"].ToString().Equals("PAYMENT") ||
+                                        fee["pricingType"].ToString().Equals("CREDIT_PARTIAL_PAYMENT"))
                                     && fee.ContainsKey("totalDue")
                                     )
                                 {
